@@ -15,6 +15,13 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
+    print(str(bot.user) + ' is running.')
+
+
+@bot.command()
+async def getregs(ctx):
+    await ctx.send("✔ Fetching registrations.")
+
     channel = bot.get_channel(596006191981789255)
 
     for user in get_users():
@@ -37,10 +44,10 @@ async def on_ready():
                                                                 user["family_photo"],
                                                                 len(user["children"]))
         for child in user["children"]:
-            embed.add_field(name=child["child_name"], value=child["child_age"], inline="False")
+            val = "**Age:** {}\n\n" \
+                  "Wishlist:\n{}".format(child["child_age"], child["child_wishlist"])
+            embed.add_field(name=child["child_name"], value=val, inline="False")
         await channel.send(embed=embed)
-
-    print(str(bot.user) + ' is running.')
 
 
 def get_dict_key(key):
@@ -63,6 +70,13 @@ def get_dict_key(key):
         return "child_age"
     elif "child" in key and "name" in key:
         return "child_name"
+    elif "child" in key and "wishlist" in key:
+        print("child_wishlist")
+        return "child_wishlist"
+    elif "silver" in key and "verification" in key and "age" in key:
+        return "child_age_proof"
+    elif "silver" in key and "verification" in key and ("custody" in key or "address" in key):
+        return "child_custody_proof"
     elif "number" in key and "children" in key:
         return "num_children"
     elif "please copy below" in key and "rules":
@@ -90,14 +104,12 @@ def get_users():
     # print("Got sheet.")
 
     CHILD_COLUMNS = 5
+    REQUIRED_CHILD_COLUMNS = 2
 
     keys = sheet.get_all_values()[0]
     child_start = -1
     for i in range(len(keys)):
-        key = keys[i]
-        child_in_key = "child" in key.lower() and not "number" in key.lower()
-        child_verification = "for silver verification only" in key.lower()
-        if child_in_key or child_verification:
+        if "child_" in get_dict_key(keys[i]):
             if child_start == -1: child_start = i
             # print(key)
             break
@@ -108,6 +120,7 @@ def get_users():
     # Extract and print all of the values
     # sheet.get_all_records() if we only want the filled out columns in ALL rows
     for user in sheet.get_all_values()[1:]:
+        print(user)
         u = dict()
         u["children"] = list()
         column_count = 0
@@ -116,9 +129,10 @@ def get_users():
             key = keys[i]
             if i >= child_start:
                 if column_count == CHILD_COLUMNS:
-                    if len(curr_child.keys()) >= CHILD_COLUMNS:
+                    child_keys = curr_child.keys()
+                    if "child_name" in child_keys and "child_age" in child_keys and "child_wishlist" in child_keys:
                         u["children"].append(curr_child)
-                        curr_child = dict()
+                    curr_child = dict()
                     column_count = 0
                 else:
                     if user[i] != "": curr_child[get_dict_key(key)] = user[i]

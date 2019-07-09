@@ -121,3 +121,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom
+.idea
+__pycache__
+client_secret.json
+users.json
+sheet.json

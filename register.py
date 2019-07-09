@@ -5,12 +5,14 @@ import gspread
 from discord.ext import commands
 from oauth2client.service_account import ServiceAccountCredentials
 
+SHEET_NAME = "SCW Registration  (Responses)"
+
 bot = commands.Bot("!", description="SCW's registration bot 🤓.")
 
 
 @bot.event
 async def on_command_error(ctx, error):
-    print(error)
+    await ctx.send(str(error))
 
 
 @bot.event
@@ -99,7 +101,7 @@ def get_users():
 
     # Find a workbook by name and open the first sheet
     # Make sure you use the right name here.
-    sheet = client.open("SantasChristmasWish Registration  (Responses)").sheet1
+    sheet = client.open(SHEET_NAME).sheet1
 
     # print("Got sheet.")
 

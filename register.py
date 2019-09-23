@@ -1,5 +1,6 @@
 import asyncio
 import configparser
+import json
 
 import discord
 import gspread
@@ -9,8 +10,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 import apraw
 import uslapi
-
-import json
 
 SHEET_NAME = "SCW Registration  (Responses)"
 REGGIE_COLOR = discord.Colour(0).from_rgb(152, 0, 0)
@@ -23,11 +22,13 @@ reddit = praw.Reddit("RB")
 usl = uslapi.UniversalScammerList('bot for SCW by /u/SantasChristmasWish')
 usl_user = usl.login('SantasChristmasWish', 'Harvey98')
 
-approvers = [592816167190790160, 592803234368716801, 495503769451102210, 598159671651729409, 597803503951544320, 383657174674702346] # remove the last one before release
+approvers = [592816167190790160, 592803234368716801, 495503769451102210, 598159671651729409, 597803503951544320,
+             383657174674702346]  # remove the last one before release
+
 
 @bot.event
 async def on_command_error(ctx, error):
-    await ctx.send(str(error))
+    print(error)
 
 
 @bot.event
@@ -178,10 +179,11 @@ async def on_raw_reaction_add(p):
     c = bot.get_channel(p.channel_id)
 
     u = bot.get_user(p.user_id)
+    global approvers
     if u.bot or u.id not in approvers:
         return
 
-    m = await c.fetch_message(p.message_id) if c is not None else 
+    m = await c.fetch_message(p.message_id) if c is not None else await u.fetch_message(p.message_id)
     e = p.emoji.name if not p.emoji.is_custom_emoji() else "<:{}:{}>".format(p.emoji.name, p.emoji.id)
 
     if len(m.embeds) != 1:
@@ -189,27 +191,35 @@ async def on_raw_reaction_add(p):
 
     post = reddit.submission(url=m.embeds[0].author.url)
 
-    if c.id == 596006191981789255:
+    if c is not None and c.id == 596006191981789255:
         if e == "🥉":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
                                        {"link": post.name, "flair_template_id": "8de4659c-dd59-11e9-89a3-0ee420649c9a"})
+            post.subreddit.flair.set(post.author.name, flair_template_id="8de4659c-dd59-11e9-89a3-0ee420649c9a")
             post.mod.approve()
         elif e == "🥈":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
                                        {"link": post.name, "flair_template_id": "11be290c-dd5a-11e9-9621-0ed81c20b56a"})
+            post.subreddit.flair.set(post.author.name, flair_template_id="11be290c-dd5a-11e9-9621-0ed81c20b56a")
             post.mod.approve()
         elif e == "🥇":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
                                        {"link": post.name, "flair_template_id": "302f0b54-dd5a-11e9-865f-0e6be140e43a"})
+            post.subreddit.flair.set(post.author.name, flair_template_id="302f0b54-dd5a-11e9-865f-0e6be140e43a")
             post.mod.approve()
         elif e == "💎":
             with open("files/platinum.json") as f:
                 platinum = json.loads(f.read())
+
+                for plat in platinum:
+                    if plat["id"] == post.id:
+                        platinum.remove(plat)
+
                 platinum.append({
                     "id": post.id,
                     "approvers": [u.id]
                 })
-                with open ("files/platinum.json", "w+") as f:
+                with open("files/platinum.json", "w+") as f:
                     f.write(json.dumps(platinum, indent=4))
 
             post_embed = discord.Embed(
@@ -249,19 +259,31 @@ async def on_raw_reaction_add(p):
         if e == "✔":
             with open("files/platinum.json") as f:
                 platinum = json.loads(f.read())
+                found = False
                 for plat in platinum:
                     if plat["id"] == post.id:
+                        found = True
                         if u.id not in plat["approvers"]:
                             plat["approvers"].append(u.id)
+                            plat["approvers"] = set(plat["approvers"])
                             with open("files/platinum.json", "w+") as f:
                                 f.write(json.dumps(platinum, indent=4))
                         if len(plat["approvers"]) == 3:
                             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
                                                        {"link": post.name,
                                                         "flair_template_id": "5600f6ee-dd5a-11e9-a4fc-0e59b2f870f2"})
+                            post.subreddit.flair.set(post.author.name,
+                                                     flair_template_id="5600f6ee-dd5a-11e9-a4fc-0e59b2f870f2")
                             post.mod.approve()
                         break
-        await m.edit(content="Your action has been recorded.")
+                if found:
+                    await m.edit(content="Your action has been recorded.", embed=None)
+                else:
+                    await m.edit(
+                        content="Your action couldn't be successfully recorded. Please contact <@383657174674702346> or <@592803234368716801> as soon as possible.",
+                        embed=None)
+        else:
+            await m.edit(content="Your action has been recorded.", embed=None)
 
 
 async def reddit_task():

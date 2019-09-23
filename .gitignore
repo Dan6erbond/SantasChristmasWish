@@ -126,6 +126,6 @@ dmypy.json
 .idea
 __pycache__
 client_secret.json
-users.json
 sheet.json
 discord.ini
+praw.ini

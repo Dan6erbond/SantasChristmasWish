@@ -85,6 +85,8 @@ async def warning(ctx, user):
                     note = ", ".join(u["warnings"])
                     reddit.subreddit("SantasChristmasWish").banned.add(user, ban_reason=reason, ban_message=ban_message,
                                                                        note=note)
+                    redditor.message("/r/SantasChristmasWish Ban", ban_message,
+                                     from_subreddit="SantasChristmasWish")
                     ux_message = "User successfully banned!"
                 break
         if not found:
@@ -145,6 +147,8 @@ async def ban(ctx, user):
         note = ", ".join(u["warnings"])
         reddit.subreddit("SantasChristmasWish").banned.add(user, ban_reason=reason, ban_message=ban_message,
                                                            note=note)
+        redditor.message("/r/SantasChristmasWish Ban", ban_message,
+                         from_subreddit="SantasChristmasWish")
 
         with open("files/users.json", "w+") as f:
             f.write(json.dumps(users, indent=4))

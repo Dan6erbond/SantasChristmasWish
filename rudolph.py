@@ -102,8 +102,8 @@ async def warning(ctx, user):
 
 @bot.command()
 async def ban(ctx, user):
-    user = user.replace("r/", "").replace("/", "")
-    for emoji in "🗑 👥 🎅 🖊 🔄 😠".split(" "):
+    user = user.replace("u/", "").replace("/", "")
+    for emoji in "🗑👥🎅🖊🔄😠":
         await ctx.message.add_reaction(emoji)
 
     def check(r, u):

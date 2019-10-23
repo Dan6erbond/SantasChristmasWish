@@ -292,7 +292,9 @@ async def reddit_task():
     channel = bot.get_channel(596006191981789255)
 
     sub = await aReddit.subreddit("santaschristmaswish")
-    ids = set()
+    file = open("files/register_posts.txt")
+    ids = file.read().splitlines()
+    file.close()
 
     while True:
         print("Scanning queue...")
@@ -300,7 +302,7 @@ async def reddit_task():
             if post.id in ids:
                 continue
             else:
-                ids.add(post.id)
+                ids.append(post.id)
             print("Found post.")
             post_embed = discord.Embed(
                 colour=REGGIE_COLOR
@@ -330,6 +332,8 @@ async def reddit_task():
                     await msg.add_reaction(emoji)
             else:
                 await channel.send("Post made but no corresponding user found!", embed=post_embed)
+        with open("files/register_posts.txt", "w+") as f:
+            f.write("\n".join(ids))
         print("Done scanning!")
         await asyncio.sleep(30)
 

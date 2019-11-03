@@ -1,6 +1,9 @@
 import asyncio
 import configparser
 import json
+import re
+
+import reggie_config
 
 import discord
 import gspread
@@ -13,6 +16,7 @@ import uslapi
 
 SHEET_NAME = "SCW Registration  (Responses)"
 REGGIE_COLOR = discord.Colour(0).from_rgb(152, 0, 0)
+GIFTS_PER_CHILD = 4
 
 bot = commands.Bot("!", description="SCW's registration bot 🤓.")
 
@@ -22,8 +26,8 @@ reddit = praw.Reddit("RB")
 usl = uslapi.UniversalScammerList('bot for SCW by /u/SantasChristmasWish')
 usl_user = usl.login('SantasChristmasWish', 'Harvey98')
 
-approvers = [592816167190790160, 592803234368716801, 495503769451102210, 598159671651729409, 597803503951544320,
-             383657174674702346]  # remove the last one before release
+approvers = [592816167190790160, 592803234368716801, 495503769451102210, 597803503951544320,
+             383657174674702346]  # remove the last one before release, find out who 598159671651729409 is
 
 
 @bot.event
@@ -36,7 +40,7 @@ async def on_ready():
     print(str(bot.user) + ' is running.')
 
 
-# @bot.command()
+@bot.command()
 async def getregs(ctx):
     await ctx.send("✔ Fetching registrations.")
 
@@ -51,26 +55,35 @@ async def getregs(ctx):
 
 
 def get_user_embed(user):
+    # print(json.dumps(user, indent=4))
     embed = discord.Embed(
         colour=REGGIE_COLOR
     )
     url = "https://www.reddit.com/u/{}".format(user["username"])
     embed.set_author(name="/u/" + user["username"], url=url)
+
+    address_proof = "**Proof of address:** {}\n\n".format(user["address_proof"]) if "address_proof" in user else ""
+    need_proof = "\n**Proof of need:** {}".format(user["need_proof"]) if "need_proof" in user else ""
+    medical_condition_proof = "\n**Proof of medical condition:** {}".format(user["medical_condition_proof"]) if "medical_condition_proof" in user else ""
+
     embed.description = "**Full Name:** {}\n\n" \
                         "**Country:** {}\n" \
                         "**Full address:** {}\n\n" \
                         "**ID:** {}\n" \
-                        "**Proof of address:** {}\n\n" \
+                        "{}" \
                         "**Family photo:** {}\n" \
-                        "**Number of children:** {}".format(user["name"], user["country"],
+                        "**Number of children:** {}{}{}".format(user["name"], user["country"],
                                                             user["full_address"],
                                                             user["id_proof"],
-                                                            user["address_proof"],
+                                                            address_proof,
                                                             user["family_photo"],
-                                                            len(user["children"]))
+                                                            len(user["children"]), need_proof, medical_condition_proof)
     for child in user["children"]:
+        silver_verification = ""
+        if "child_age_proof" in child and "child_custody_proof" in child:
+            silver_verification = "\nProof of age:\n{}\nProof of custody/residence:\n{}".format(child["child_age_proof"], child["child_custody_proof"])
         val = "**Age:** {}\n\n" \
-              "Wishlist:\n{}".format(child["child_age"], child["child_wishlist"])
+              "Wishlist:\n{}{}".format(child["child_age"], child["child_wishlist"], silver_verification)
         embed.add_field(name=child["child_name"], value=val, inline=False)
 
     data = usl.query(usl_user, user["username"])
@@ -91,6 +104,8 @@ def get_dict_key(key):
         return "country"
     elif "full" in key and ("adress" in key or "address" in key):
         return "full_address"
+    elif "silver" in key and "verification" in key and ("custody" in key or ("adress" in key or "address" in key)):
+        return "child_custody_proof"
     elif "proof" in key and ("adress" in key or "address" in key):
         return "address_proof"
     elif "family" in key and "photo" in key:
@@ -104,14 +119,16 @@ def get_dict_key(key):
         return "child_wishlist"
     elif "silver" in key and "verification" in key and "age" in key:
         return "child_age_proof"
-    elif "silver" in key and "verification" in key and ("custody" in key or "address" in key):
-        return "child_custody_proof"
     elif "number" in key and "children" in key:
         return "num_children"
     elif "please copy below" in key and "rules":
         return "rule_confirmation"
     elif "please copy below" in key and "christmas" in key and "subreddit" in key:
         return "crosspost_confirmation"
+    elif "proof" in key and "need" in key:
+        return "need_proof"
+    elif "proof" in key and "medical" in key and "condition" in key:
+        return "medical_condition_proof"
     elif "id" in key:
         return "id_proof"
     else:
@@ -137,10 +154,12 @@ def get_users():
 
     keys = sheet.get_all_values()[0]
     child_start = -1
+    child_end = -1
     for i in range(len(keys)):
         if "child_" in get_dict_key(keys[i]):
             if child_start == -1: child_start = i
-            # print(key)
+            child_end = i
+        elif child_end != -1:
             break
     # print(keys[child_start])
 
@@ -156,7 +175,8 @@ def get_users():
         curr_child = dict()
         for i in range(len(keys)):
             key = keys[i]
-            if i >= child_start:
+            dict_key = get_dict_key(key)
+            if i >= child_start and i < child_end:
                 if column_count == CHILD_COLUMNS:
                     child_keys = curr_child.keys()
                     if "child_name" in child_keys and "child_age" in child_keys and "child_wishlist" in child_keys:
@@ -164,12 +184,12 @@ def get_users():
                     curr_child = dict()
                     column_count = 0
                 else:
-                    if user[i] != "": curr_child[get_dict_key(key)] = user[i]
+                    if user[i] != "": curr_child[dict_key] = user[i]
                     column_count += 1
             else:
-                if user[i] != "": u[get_dict_key(key)] = user[i] if get_dict_key(key) != "username" else user[
+                if user[i] != "": u[dict_key] = user[i] if dict_key != "username" else user[
                     i].replace("u/", "").replace("/", "")
-        if len(u.keys()) - 1 == child_start:
+        if len(u.keys()) - 1 >= child_start - 1:
             users.append(u)
     return users
 
@@ -194,18 +214,18 @@ async def on_raw_reaction_add(p):
     if c is not None and c.id == 596006191981789255:
         if e == "🥉":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
-                                       {"link": post.name, "flair_template_id": "8de4659c-dd59-11e9-89a3-0ee420649c9a"})
-            post.subreddit.flair.set(post.author.name, flair_template_id="8de4659c-dd59-11e9-89a3-0ee420649c9a")
+                                       {"link": post.name, "flair_template_id": reggie_config.bronze_post_flair_id})
+            post.subreddit.flair.set(post.author.name, flair_template_id=reggie_config.bronze_user_flair_id)
             post.mod.approve()
         elif e == "🥈":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
-                                       {"link": post.name, "flair_template_id": "11be290c-dd5a-11e9-9621-0ed81c20b56a"})
-            post.subreddit.flair.set(post.author.name, flair_template_id="11be290c-dd5a-11e9-9621-0ed81c20b56a")
+                                       {"link": post.name, "flair_template_id": reggie_config.silver_post_flair_id})
+            post.subreddit.flair.set(post.author.name, flair_template_id=reggie_config.silver_user_flair_id)
             post.mod.approve()
         elif e == "🥇":
             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
-                                       {"link": post.name, "flair_template_id": "302f0b54-dd5a-11e9-865f-0e6be140e43a"})
-            post.subreddit.flair.set(post.author.name, flair_template_id="302f0b54-dd5a-11e9-865f-0e6be140e43a")
+                                       {"link": post.name, "flair_template_id": reggie_config.gold_post_flair_id})
+            post.subreddit.flair.set(post.author.name, flair_template_id=reggie_config.gold_user_flair_id)
             post.mod.approve()
         elif e == "💎":
             with open("files/platinum.json") as f:
@@ -271,9 +291,9 @@ async def on_raw_reaction_add(p):
                         if len(plat["approvers"]) == 3:
                             await aReddit.post_request("/r/SantasChristmasWish/api/selectflair",
                                                        {"link": post.name,
-                                                        "flair_template_id": "5600f6ee-dd5a-11e9-a4fc-0e59b2f870f2"})
+                                                        "flair_template_id": reggie_config.platinum_post_flair_id})
                             post.subreddit.flair.set(post.author.name,
-                                                     flair_template_id="5600f6ee-dd5a-11e9-a4fc-0e59b2f870f2")
+                                                     flair_template_id=reggie_config.platinum_user_flair_id)
                             post.mod.approve()
                         break
                 if found:
@@ -290,26 +310,37 @@ async def reddit_task():
     await bot.wait_until_ready()
 
     channel = bot.get_channel(596006191981789255)
+    loop_time = 5 * 60
 
     sub = await aReddit.subreddit("santaschristmaswish")
+
     file = open("files/register_posts.txt")
-    ids = file.read().splitlines()
+    post_ids = file.read().splitlines()
+    file.close()
+    new_post_ids = list()
+
+    file = open("files/gifts.json")
+    gifts = json.loads(file.read())
     file.close()
 
+    last_comment_id = None
+
     while True:
+        users = get_users()
+
         print("Scanning queue...")
         async for post in sub.mod.modqueue():
-            if post.id in ids:
+            if post.id in post_ids:
                 continue
-            else:
-                ids.append(post.id)
+            post_ids.append(post.id)
+            new_post_ids.append(post.id)
             print("Found post.")
             post_embed = discord.Embed(
                 colour=REGGIE_COLOR
             )
 
             author = await post.author()
-            title = "New submission by /u/{}!".format(author)
+            title = post.title
             url = "https://www.reddit.com" + post.permalink
             post_embed.set_author(name=title, url=url if url != "" else discord.Embed.Empty)
 
@@ -319,26 +350,75 @@ async def reddit_task():
             post_embed.add_field(name="Body", value=post.selftext if post.selftext != "" else "Empty",
                                  inline=False)
 
-            user_embed = None
-            for user in get_users():
+            user_found = False
+            for user in users:
                 if user["username"].lower() == author.name.lower():
                     user_embed = get_user_embed(user)
+                    user_found = True
+
+                    names = [gift["username"].lower() for gift in gifts]
+                    if user["username"].lower() not in names:
+                        gifts.append({
+                            "username": user["username"],
+                            "num_children": len(user["children"]),
+                            "gifts_completed": []
+                        })
+
+                    await channel.send("New post by /u/{}!".format(author.name), embed=user_embed)
+                    msg = await channel.send(embed=post_embed)
+                    for emoji in ["🥉", "🥈", "🥇", "💎", "✖"]:
+                        await msg.add_reaction(emoji)
+
                     break
 
-            if user_embed is not None:
-                await channel.send(embed=user_embed)
-                msg = await channel.send(embed=post_embed)
-                for emoji in ["🥉", "🥈", "🥇", "💎", "✖"]:
-                    await msg.add_reaction(emoji)
-            else:
-                await channel.send("Post made but no corresponding user found!", embed=post_embed)
-        with open("files/register_posts.txt", "w+") as f:
-            f.write("\n".join(ids))
-        print("Done scanning!")
-        await asyncio.sleep(30)
+            if not user_found:
+                await channel.send("Post made by /u/{} but no corresponding user found!".format(author.name), embed=post_embed)
 
+        with open("files/register_posts.txt", "a+") as f:
+            f.write("\n" + "\n".join(new_post_ids))
+
+        file = open("files/register_comments.txt")
+        comment_ids = file.read().splitlines()
+        file.close()
+        new_comment_ids = list()
+
+        async for c in aReddit.get_listing("/r/santaschristmaswish/comments", 100):
+            if c["kind"] != aReddit.comment_kind:
+                continue
+            if c["data"]["id"] in comment_ids:
+                continue
+            comment_ids.append(c["data"]["id"])
+            new_comment_ids.append(c["data"]["id"])
+            c["data"]["link_author"]
+            x = re.search("!(\d+)", c["data"]["body"])
+            if x and c["data"]["body"].startswith("!"):
+                g = int(x.group(1))
+                for gift in gifts:
+                    if c["data"]["link_author"].lower() == gift["username"].lower():
+                        for i in range(g):
+                            gift["gifts_completed"].append({
+                                "username": c["data"]["author"],
+                                "comment": "https://www.reddit.com" + c["data"]["permalink"]
+                            })
+                        data = {
+                            "text": "Thank you for being a part of SCW and sending gifts to /u/{}'s {}.\n\n"
+                                    "They now have a total of {} gifts."
+                                    "🎅".format(gift["username"], "child" if gift["num_children"] == 1 else "children", len(gift["gifts_completed"])),
+                            "thing_id": "{}_{}".format(c["kind"], c["data"]["id"])
+                        }
+                        await aReddit.post_request("/api/comment", data)
+                        break
+
+        with open("files/register_comments.txt", "a+") as f:
+            f.write("\n" + "\n".join(new_comment_ids))
+        with open("files/gifts.json", "w+") as f:
+            f.write(json.dumps(gifts, indent=4))
+
+        print("Done scanning!")
+        await asyncio.sleep(loop_time)
 
 config = configparser.ConfigParser()
 config.read("discord.ini")
 bot.loop.create_task(reddit_task())
+# bot.loop.create_task(test_task())
 bot.run(config["RB"]["token"])

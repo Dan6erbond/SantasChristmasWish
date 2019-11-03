@@ -72,7 +72,7 @@ async def warning(ctx, user):
 
     ux_message = "User successfully warned!"
 
-    with open("files/users.json") as f:
+    with open("files/warnings.json") as f:
         users = json.loads(f.read())
         found = False
         for u in users:
@@ -94,7 +94,7 @@ async def warning(ctx, user):
                 "name": user.lower(),
                 "warnings": [reason]
             })
-        with open("files/users.json", "w+") as f:
+        with open("files/warnings.json", "w+") as f:
             f.write(json.dumps(users, indent=4))
 
     await ctx.send(ux_message)
@@ -127,7 +127,7 @@ async def ban(ctx, user):
     elif emoji == "😠":
         reason = "Harassment of another Wisher"
 
-    with open("files/users.json") as f:
+    with open("files/warnings.json") as f:
         users = json.loads(f.read())
         found = False
         for u in users:
@@ -150,7 +150,7 @@ async def ban(ctx, user):
         redditor.message("/r/SantasChristmasWish Ban", ban_message,
                          from_subreddit="SantasChristmasWish")
 
-        with open("files/users.json", "w+") as f:
+        with open("files/warnings.json", "w+") as f:
             f.write(json.dumps(users, indent=4))
 
     await ctx.send("User successfully banned!")

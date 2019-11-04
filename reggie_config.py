@@ -7,3 +7,5 @@ bronze_post_flair_id = "8de4659c-dd59-11e9-89a3-0ee420649c9a"
 silver_post_flair_id = "11be290c-dd5a-11e9-9621-0ed81c20b56a"
 gold_post_flair_id = "302f0b54-dd5a-11e9-865f-0e6be140e43a"
 platinum_post_flair_id = "5600f6ee-dd5a-11e9-a4fc-0e59b2f870f2"
+
+registrations_sheet_name = "SCW Registration  (Responses)"

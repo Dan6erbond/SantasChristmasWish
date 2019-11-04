@@ -14,7 +14,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import apraw
 import uslapi
 
-SHEET_NAME = "SCW Registration  (Responses)"
 REGGIE_COLOR = discord.Colour(0).from_rgb(152, 0, 0)
 GIFTS_PER_CHILD = 4
 
@@ -30,9 +29,6 @@ approvers = [592816167190790160, 592803234368716801, 495503769451102210, 5978035
              383657174674702346]  # remove the last one before release, find out who 598159671651729409 is
 
 
-@bot.event
-async def on_command_error(ctx, error):
-    print(error)
 
 
 @bot.event
@@ -47,7 +43,7 @@ async def getregs(ctx):
     channel = bot.get_channel(596006191981789255)
 
     users = get_users()
-    print(len(users))
+    # print(len(users))
 
     for user in users:
         embed = get_user_embed(user)
@@ -62,28 +58,21 @@ def get_user_embed(user):
     url = "https://www.reddit.com/u/{}".format(user["username"])
     embed.set_author(name="/u/" + user["username"], url=url)
 
-    address_proof = "**Proof of address:** {}\n\n".format(user["address_proof"]) if "address_proof" in user else ""
-    need_proof = "\n**Proof of need:** {}".format(user["need_proof"]) if "need_proof" in user else ""
-    medical_condition_proof = "\n**Proof of medical condition:** {}".format(user["medical_condition_proof"]) if "medical_condition_proof" in user else ""
+    # address_proof = "**Proof of address:** {}\n\n".format(user["address_proof"]) if "address_proof" in user else ""
+    # need_proof = "\n**Proof of need:** {}".format(user["need_proof"]) if "need_proof" in user else ""
+    # medical_condition_proof = "\n**Proof of medical condition:** {}".format(user["medical_condition_proof"]) if "medical_condition_proof" in user else ""
 
     embed.description = "**Full Name:** {}\n\n" \
                         "**Country:** {}\n" \
                         "**Full address:** {}\n\n" \
-                        "**ID:** {}\n" \
-                        "{}" \
-                        "**Family photo:** {}\n" \
-                        "**Number of children:** {}{}{}".format(user["name"], user["country"],
-                                                            user["full_address"],
-                                                            user["id_proof"],
-                                                            address_proof,
-                                                            user["family_photo"],
-                                                            len(user["children"]), need_proof, medical_condition_proof)
+                        "**Documentation:** {}\n" \
+                        "**Number of children:** {}\n" \
+                        "**Requested wish level:** {}".format(user["name"], user["country"],
+                                                            user["full_address"], user["documentation_link"],
+                                                            len(user["children"]), user["wish_level"])
     for child in user["children"]:
-        silver_verification = ""
-        if "child_age_proof" in child and "child_custody_proof" in child:
-            silver_verification = "\nProof of age:\n{}\nProof of custody/residence:\n{}".format(child["child_age_proof"], child["child_custody_proof"])
         val = "**Age:** {}\n\n" \
-              "Wishlist:\n{}{}".format(child["child_age"], child["child_wishlist"], silver_verification)
+              "Wishlist:\n{}".format(child["child_age"], child["child_wishlist"])
         embed.add_field(name=child["child_name"], value=val, inline=False)
 
     data = usl.query(usl_user, user["username"])
@@ -102,6 +91,10 @@ def get_dict_key(key):
         return "name"
     elif "country" in key:
         return "country"
+    elif "imgur" in key and "documentation" in key:
+        return "documentation_link"
+    elif "wish" in key and "level" in key:
+        return "wish_level"
     elif "full" in key and ("adress" in key or "address" in key):
         return "full_address"
     elif "silver" in key and "verification" in key and ("custody" in key or ("adress" in key or "address" in key)):
@@ -115,7 +108,6 @@ def get_dict_key(key):
     elif "child" in key and "name" in key:
         return "child_name"
     elif "child" in key and "wishlist" in key:
-        # print("child_wishlist")
         return "child_wishlist"
     elif "silver" in key and "verification" in key and "age" in key:
         return "child_age_proof"
@@ -145,23 +137,24 @@ def get_users():
 
     # Find a workbook by name and open the first sheet
     # Make sure you use the right name here.
-    sheet = client.open(SHEET_NAME).sheet1
+    sheet = client.open(reggie_config.registrations_sheet_name).sheet1
 
     # print("Got sheet.")
 
-    CHILD_COLUMNS = 5
-    REQUIRED_CHILD_COLUMNS = 2
-
     keys = sheet.get_all_values()[0]
+    child_keys = set()
     child_start = -1
     child_end = -1
     for i in range(len(keys)):
-        if "child_" in get_dict_key(keys[i]):
-            if child_start == -1: child_start = i
+        key = get_dict_key(keys[i])
+        if "child_" in key:
+            if key not in child_keys:
+                child_keys.add(key)
+            if child_start == -1:
+                child_start = i
             child_end = i
         elif child_end != -1:
             break
-    # print(keys[child_start])
 
     users = list()
 
@@ -176,19 +169,21 @@ def get_users():
         for i in range(len(keys)):
             key = keys[i]
             dict_key = get_dict_key(key)
-            if i >= child_start and i < child_end:
-                if column_count == CHILD_COLUMNS:
-                    child_keys = curr_child.keys()
-                    if "child_name" in child_keys and "child_age" in child_keys and "child_wishlist" in child_keys:
+            if i >= child_start and i <= child_end:
+                if column_count == len(child_keys)-1:
+                    if user[i] != "":
+                        curr_child[dict_key] = user[i]
+                    if len(curr_child.keys()) >= len(child_keys): # replace with REQUIRED_CHILD_KEYS (to define) if there are optional parameters
                         u["children"].append(curr_child)
                     curr_child = dict()
                     column_count = 0
                 else:
-                    if user[i] != "": curr_child[dict_key] = user[i]
+                    if user[i] != "":
+                        curr_child[dict_key] = user[i].strip()
                     column_count += 1
             else:
-                if user[i] != "": u[dict_key] = user[i] if dict_key != "username" else user[
-                    i].replace("u/", "").replace("/", "")
+                if user[i] != "": u[dict_key] = user[i].strip() if dict_key != "username" else user[
+                    i].replace("u/", "").replace("/", "").strip()
         if len(u.keys()) - 1 >= child_start - 1:
             users.append(u)
     return users

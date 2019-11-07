@@ -323,51 +323,58 @@ async def reddit_task():
     while True:
         users = get_users()
 
-        print("Scanning queue...")
-        async for post in sub.mod.modqueue():
-            if post.id in post_ids:
-                continue
-            post_ids.append(post.id)
-            new_post_ids.append(post.id)
-            print("Found post.")
-            post_embed = discord.Embed(
-                colour=REGGIE_COLOR
-            )
+        try:
+            print("Scanning queue...")
+            async for post in sub.mod.modqueue():
+                if not post.data["name"].startswith(aReddit.link_kind):
+                    continue
+                if post.id in post_ids:
+                    continue
 
-            author = await post.author()
-            title = post.title
-            url = "https://www.reddit.com" + post.permalink
-            post_embed.set_author(name=title, url=url if url != "" else discord.Embed.Empty)
+                post_ids.append(post.id)
+                new_post_ids.append(post.id)
+                print("Found post.")
+                post_embed = discord.Embed(
+                    colour=REGGIE_COLOR
+                )
 
-            if not post.data["is_self"]:
-                continue
+                author = await post.author()
+                title = post.title
+                url = "https://www.reddit.com" + post.permalink
+                post_embed.set_author(name=title, url=url if url != "" else discord.Embed.Empty)
 
-            post_embed.add_field(name="Body", value=post.selftext if post.selftext != "" else "Empty",
-                                 inline=False)
+                if not post.data["is_self"]:
+                    continue
 
-            user_found = False
-            for user in users:
-                if user["username"].lower() == author.name.lower():
-                    user_embed = get_user_embed(user)
-                    user_found = True
+                post_embed.add_field(name="Body", value=post.selftext if post.selftext != "" else "Empty",
+                                     inline=False)
 
-                    names = [gift["username"].lower() for gift in gifts]
-                    if user["username"].lower() not in names:
-                        gifts.append({
-                            "username": user["username"],
-                            "num_children": len(user["children"]),
-                            "gifts_completed": []
-                        })
+                user_found = False
+                for user in users:
+                    if user["username"].lower() == author.name.lower():
+                        user_embed = get_user_embed(user)
+                        user_found = True
 
-                    await channel.send("New post by /u/{}!".format(author.name), embed=user_embed)
-                    msg = await channel.send(embed=post_embed)
-                    for emoji in ["🥉", "🥈", "🥇", "💎", "✖"]:
-                        await msg.add_reaction(emoji)
+                        names = [gift["username"].lower() for gift in gifts]
+                        if user["username"].lower() not in names:
+                            gifts.append({
+                                "username": user["username"],
+                                "num_children": len(user["children"]),
+                                "gifts_completed": []
+                            })
 
-                    break
+                        await channel.send("New post by /u/{}!".format(author.name), embed=user_embed)
+                        msg = await channel.send(embed=post_embed)
+                        for emoji in ["🥉", "🥈", "🥇", "💎", "✖"]:
+                            await msg.add_reaction(emoji)
 
-            if not user_found:
-                await channel.send("Post made by /u/{} but no corresponding user found!".format(author.name), embed=post_embed)
+                        break
+
+                if not user_found:
+                    await channel.send("Post made by /u/{} but no corresponding user found!".format(author.name),
+                                       embed=post_embed)
+        except Exception as e:
+            print("Modqueue:", e)
 
         with open("files/register_posts.txt", "a+") as f:
             f.write("\n" + "\n".join(new_post_ids))
@@ -377,32 +384,36 @@ async def reddit_task():
         file.close()
         new_comment_ids = list()
 
-        async for c in aReddit.get_listing("/r/santaschristmaswish/comments", 100):
-            if c["kind"] != aReddit.comment_kind:
-                continue
-            if c["data"]["id"] in comment_ids:
-                continue
-            comment_ids.append(c["data"]["id"])
-            new_comment_ids.append(c["data"]["id"])
-            c["data"]["link_author"]
-            x = re.search("!(\d+)", c["data"]["body"])
-            if x and c["data"]["body"].startswith("!"):
-                g = int(x.group(1))
-                for gift in gifts:
-                    if c["data"]["link_author"].lower() == gift["username"].lower():
-                        for i in range(g):
-                            gift["gifts_completed"].append({
-                                "username": c["data"]["author"],
-                                "comment": "https://www.reddit.com" + c["data"]["permalink"]
-                            })
-                        data = {
-                            "text": "Thank you for being a part of SCW and sending gifts to /u/{}'s {}.\n\n"
-                                    "They now have a total of {} gifts."
-                                    "🎅".format(gift["username"], "child" if gift["num_children"] == 1 else "children", len(gift["gifts_completed"])),
-                            "thing_id": "{}_{}".format(c["kind"], c["data"]["id"])
-                        }
-                        await aReddit.post_request("/api/comment", data)
-                        break
+        try:
+            print("Scanning comments...")
+            async for c in aReddit.get_listing("/r/santaschristmaswish/comments", 100):
+                if c["kind"] != aReddit.comment_kind:
+                    continue
+                if c["data"]["id"] in comment_ids:
+                    continue
+                comment_ids.append(c["data"]["id"])
+                new_comment_ids.append(c["data"]["id"])
+                c["data"]["link_author"]
+                x = re.search("!(\d+)", c["data"]["body"])
+                if x and c["data"]["body"].startswith("!"):
+                    g = int(x.group(1))
+                    for gift in gifts:
+                        if c["data"]["link_author"].lower() == gift["username"].lower():
+                            for i in range(g):
+                                gift["gifts_completed"].append({
+                                    "username": c["data"]["author"],
+                                    "comment": "https://www.reddit.com" + c["data"]["permalink"]
+                                })
+                            data = {
+                                "text": "Thank you for being a part of SCW and sending gifts to /u/{}'s {}.\n\n"
+                                        "They now have a total of {} gifts."
+                                        "🎅".format(gift["username"], "child" if gift["num_children"] == 1 else "children", len(gift["gifts_completed"])),
+                                "thing_id": "{}_{}".format(c["kind"], c["data"]["id"])
+                            }
+                            await aReddit.post_request("/api/comment", data)
+                            break
+        except Exception as e:
+            print("Comments:", e)
 
         with open("files/register_comments.txt", "a+") as f:
             f.write("\n" + "\n".join(new_comment_ids))
